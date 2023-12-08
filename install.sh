@@ -15,6 +15,11 @@ SUPPORTED_LOCALES=(
 	en_US
 )
 
+SUPPORTED_FS=(
+	ext4
+	btrfs
+)
+
 #===================================================
 # Cambria Linux install script
 #===================================================
