@@ -302,6 +302,43 @@ btrfs_layout_selection() {
 		layout=$SELECTED_LAYOUT
 	done
 }
+
+### Installation functions
+
+filesystem_creation() {
+	case $FILESYSTEM in
+		EXT4)
+			eval_gettext "Formating \$ROOT_PART in ext4..."; echo
+			mkfs.ext4 -F $ROOT_PART;;
+		BTRFS)
+			eval_gettext "Formating \$ROOT_PART in btrfs..."; echo
+			mkfs.btrfs $ROOT_PART
+			eval_gettext "Creating btrfs layout on \$ROOT_PART..."; echo
+			btrfs_layout_creation;;
+	esac
+}
+
+
+btrfs_layout_creation() {
+	case $SELECTED_LAYOUT in
+		1)
+			btrfs subv create /mnt/gentoo/@;;
+		2)
+			btrfs subv create /mnt/gentoo/@
+			btrfs subv create /mnt/gentoo/@home;;
+		3)
+			mkdir /mnt/gentoo/cambria
+			btrfs subv create /mnt/gentoo/cambria/@;;
+		4)
+			mkdir /mnt/gentoo/cambria
+			btrfs subv create /mnt/gentoo/cambria/@
+			btrfs subv create /mnt/gentoo/cambria/@home;;
+	esac
+}
+
+
+### Main
+
 echo "========================================================================"
 echo "                     WELCOME ON CAMBRIA LINUX !                         "
 echo "========================================================================"
@@ -323,7 +360,9 @@ installation_mode_selection
 
 gum confirm "`eval_gettext \"Install Cambria on \\\$ROOT_PART from \\\$DISK ? DATA MAY BE LOST!\"`" || exit_ "`eval_gettext \"Installation aborted, exiting.\"`"
 
-gum spin -s pulse --show-output --title="`eval_gettext \"Please wait while the script is doing the install for you :D\"`" /usr/bin/env ROOT_PART=$ROOT_PART UEFI_PART=$UEFI_PART KEYMAP=$KEYMAP USERNAME=$USERNAME USER_PASSWORD=$USER_PASSWORD ROOT_PASSWORD=$ROOT_PASSWORD FILE=$FILE SWAP_PART=$SWAP_PART bash ./system_install.sh
+install_on_disk
+
+#gum spin -s pulse --show-output --title="`eval_gettext \"Please wait while the script is doing the install for you :D\"`" /usr/bin/env ROOT_PART=$ROOT_PART UEFI_PART=$UEFI_PART KEYMAP=$KEYMAP USERNAME=$USERNAME USER_PASSWORD=$USER_PASSWORD ROOT_PASSWORD=$ROOT_PASSWORD FILE=$FILE SWAP_PART=$SWAP_PART bash ./system_install.sh
 
 clear
 
