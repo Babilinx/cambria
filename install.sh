@@ -120,6 +120,8 @@ manual_install() {
 	clear
 	root_part_selection
 	clear
+	filesystem_selection
+	clear
 	uefi_part_selection
 	clear
 	swap_part_selection
@@ -139,6 +141,8 @@ automatic_install() {
 	clear
 	automatic_partitioning
 	clear
+	filesystem_selection
+	clear
 	user_account
 	clear
 	root_password
@@ -146,6 +150,7 @@ automatic_install() {
 	config_keymap
 	clear
 }
+
 
 automatic_partitioning() {
 	[[ "$DISK" == *"nvme"* ]] && DISK_P="${DISK}p" || DISK_P="$DISK"
@@ -257,6 +262,41 @@ locale_selection() {
 	export LC_ALL=$(gum choose --header="`eval_gettext \"Select the locale to use:\"`" ${SUPPORTED_LOCALES[@]})
 }
 
+filesystem_selection() {
+	eval_gettext "Filesystem selection"; echo
+	FILESYSTEM=$(gum choose ${SUPPORTED_FS[@]})
+
+	if [ $FILESYSTEM = "BTRFS" ]; then
+		clear
+		btrfs_layout_selection
+	fi
+}
+
+btrfs_layout_selection() {
+	eval_gettext "1. Basic layout"; echo
+	echo "\- @ => /"
+	echo
+	eval_gettext "2. Separated home"; echo
+	echo "|- @ => /"
+	echo "\- @home => /home"
+	echo
+	eval_gettext "3. Inside a folder"; echo
+	echo "|- cambria"
+	echo " \- @ => /"
+	echo
+	eval_gettext "4. Inside a folder with separated home"; echo
+	echo "|- cambria"
+	echo " |- @ => /"
+	echo " \- @home => /home"
+	echo
+
+	while [ ! $layout ]; do
+		read -p "`eval_gettext \"Select a layout [1-4]: \"`" SELECTED_LAYOUT
+		[ $SELECTED_LAYOUT -gt 4 ] && continue
+		[ $SELECTED_LAYOUT = 0 ] && continue
+		layout=$SELECTED_LAYOUT
+	done
+}
 echo "========================================================================"
 echo "                     WELCOME ON CAMBRIA LINUX !                         "
 echo "========================================================================"
@@ -273,6 +313,7 @@ echo ""
 gum confirm "`eval_gettext \"Ready?\"`" || exit_ "`eval_gettext \"See you next time!\"`"
 
 echo ""
+
 installation_mode_selection
 
 gum confirm "`eval_gettext \"Install Cambria on \\\$ROOT_PART from \\\$DISK ? DATA MAY BE LOST!\"`" || exit_ "`eval_gettext \"Installation aborted, exiting.\"`"
