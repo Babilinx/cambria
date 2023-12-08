@@ -24,77 +24,6 @@ SUPPORTED_FS=(
 # Cambria Linux install script
 #===================================================
 
-# Create system_install script to allow the usage of 'gum spin'.
-cat << EOMF > system_install.sh
-#!/usr/bin/env bash
-
-source /usr/bin/gettext.sh
-export TEXTDOMAIN="system_install"
-export TEXTDOMAINDIR="$PWD/po"
-
-# Mount root partition
-eval_gettext "Mounting root partition"; echo
-mkfs.ext4 -F \$ROOT_PART &>/dev/null
-mkdir -p /mnt/gentoo
-mount \$ROOT_PART /mnt/gentoo
-
-# Copy stage archive
-echo "Copying stage archive..."
-cp \$FILE /mnt/gentoo
-
-# Extract stage archive
-eval_gettext "Extracting stage archive..."; echo
-cd /mnt/gentoo
-pv \$FILE | tar xJp --xattrs-include='*.*' --numeric-owner
-
-# Mount UEFI partition
-eval_gettext "Mounting UEFI partition..."; echo
-mkfs.vfat \$UEFI_PART &>/dev/null
-mkdir -p /mnt/gentoo/boot/efi
-mount \$UEFI_PART /mnt/gentoo/boot/efi
-
-eval_gettext "Activating SWAP partition..."; echo
-mkswap \$SWAP_PART
-
-eval_gettext "Creating fstab..."; echo
-echo "UUID=\$(blkid -o value -s UUID "\$UEFI_PART") /boot/efi vfat defaults 0 2" >>/mnt/gentoo/etc/fstab
-echo "UUID=\$(blkid -o value -s UUID "\$ROOT_PART") / \$(lsblk -nrp -o FSTYPE \$ROOT_PART) defaults 1 1" >>/mnt/gentoo/etc/fstab
-echo "UUID=\$(blkid -o value -s UUID "\$SWAP_PART") swap swap pri=1 0 0" >>/mnt/gentoo/etc/fstab
-
-# Keymap configuration
-eval_gettext "Configuring keymap..."; echo
-echo "KEYMAP=\$KEYMAP" >/mnt/gentoo/etc/vconsole.conf
-
-# Execute installation stuff
-eval_gettext "Chroot inside Cambria..."; echo
-mount --types proc /proc /mnt/gentoo/proc
-mount --rbind /sys /mnt/gentoo/sys
-mount --make-rslave /mnt/gentoo/sys
-mount --rbind /dev /mnt/gentoo/dev
-mount --make-rslave /mnt/gentoo/dev
-mount --bind /run /mnt/gentoo/run
-mount --make-slave /mnt/gentoo/run
-
-eval_gettext "Installing GRUB..."; echo
-cat <<EOF | chroot /mnt/gentoo
-grub-install --efi-directory=/boot/efi
-grub-mkconfig -o /boot/grub/grub.cfg
-EOF
-eval_gettext "Setting up hostname..."; echo
-chroot /mnt/gentoo systemd-machine-id-setup
-eval_gettext "Setting up users..."; echo
-cat <<EOF | chroot /mnt/gentoo
-useradd -m -G users,wheel,audio,video,input -s /bin/bash \$USERNAME
-echo -e "\${USER_PASSWORD}\n\${USER_PASSWORD}" | passwd -q \$USERNAME
-echo -e "\${ROOT_PASSWORD}\n\${ROOT_PASSWORD}" | passwd -q
-systemctl preset-all --preset-mode=enable-only
-EOF
-
-eval_gettext "Deleting stage archive..."; echo
-rm /mnt/gentoo/\$(basename \$FILE)
-EOMF
-
-chmod +x system_install.sh
 
 exit_() {
     echo $1
@@ -305,6 +234,21 @@ btrfs_layout_selection() {
 
 ### Installation functions
 
+mount_root_partition() {
+	eval_gettext "Mounting root partition..."; echo
+	mkdir -p /mnt/gentoo
+	mount $ROOT_PART /mnt/gentoo
+}
+
+
+mount_efi_partition() {
+	eval_gettext "Mounting UEFI partition..."; echo
+	mkfs.vfat $UEFI_PART
+	mkdir -p /mnt/gentoo/boot/efi
+	mount $UEFI_PART /mnt/gentoo/boot/efi
+}
+
+
 filesystem_creation() {
 	case $FILESYSTEM in
 		EXT4)
@@ -334,6 +278,111 @@ btrfs_layout_creation() {
 			btrfs subv create /mnt/gentoo/cambria/@
 			btrfs subv create /mnt/gentoo/cambria/@home;;
 	esac
+}
+
+
+activate_swap() {
+	eval_gettext "Activating SWAP partition..."; echo
+	mkswap $SWAP_PART
+}
+
+
+install_stage() {
+	eval_gettext "Copying stage archive..."; echo
+	cp $FILE /mnt/gentoo
+	
+	eval_gettext "Extracting stage archive..."; echo
+	cd /mnt/gentoo
+	pv $FILE | tar xJp --xattrs-include='*.*' --numeric-owner
+}
+
+
+fstab_generation() {
+	eval_gettext "Creating fstab..."; echo
+	echo "UUID=$(blkid -o value -s UUID "$UEFI_PART")   /boot/efi   vfat   defaults   0 2" >>/mnt/gentoo/etc/fstab
+	echo "UUID=$(blkid -o value -s UUID "$SWAP_PART")   swap   swap   pri=1   0 0" >>/mnt/gentoo/etc/fstab
+
+	case $FILESYSTEM in
+		EXT4) echo "UUID=$(blkid -o value -s UUID "$ROOT_PART")   /   ext4   defaults   1 1" >>/mnt/gentoo/etc/fstab;;
+
+		BTRFS)
+			case $SELECTED_LAYOUT in
+				1) echo "UUID=$(blkid -o value -s UUID "$ROOT_PART")   /   btrfs   defaults,noatime,subvol=@   0 0" >>/mnt/gentoo/etc/fstab;;
+				2) echo "UUID=$(blkid -o value -s UUID "$ROOT_PART")   /   btrfs   defaults,noatime,subvol=@   0 0" >>/mnt/gentoo/etc/fstab
+					echo "UUID=$(blkid -o value -s UUID "$ROOT_PART")   /home   btrfs   defaults,noatime,subvol=@home   0 0" >>/mnt/gentoo/etc/fstab;;
+				3) echo "UUID=$(blkid -o value -s UUID "$ROOT_PART")   /   btrfs   defaults,noatime,subvol=cambria/@   0 0" >>/mnt/gentoo/etc/fstab;;
+				4) echo "UUID=$(blkid -o value -s UUID "$ROOT_PART")   /   btrfs   defaults,noatime,subvol=cambria/@   0 0" >>/mnt/gentoo/etc/fstab
+					echo "UUID=$(blkid -o value -s UUID "$ROOT_PART")   /home   btrfs   defaults,noatime,subvol=cambria/@home   0 0" >>/mnt/gentoo/etc/fstab;;
+			esac
+			;;
+	esac
+}
+
+
+configure_keymap() {
+	eval_gettext "Configuring keymap..."; echo
+	echo "KEYMAP=$KEYMAP" >/mnt/gentoo/etc/vconsole.conf
+}
+
+
+prepare_chroot() {
+	eval_gettext "Prepare for chroot..."; echo
+	mount --types proc /proc /mnt/gentoo/proc
+	mount --rbind /sys /mnt/gentoo/sys
+	mount --make-rslave /mnt/gentoo/sys
+	mount --rbind /dev /mnt/gentoo/dev
+	mount --make-rslave /mnt/gentoo/dev
+	mount --bind /run /mnt/gentoo/run
+	mount --make-slave /mnt/gentoo/run
+}
+
+
+create_user() {
+	eval_gettext "Setting up user..."; echo
+	cat <<EOF | chroot /mnt/gentoo
+useradd -m -G users,wheel,audio,video,input -s /bin/bash $USERNAME
+echo -e "${USER_PASSWORD}\n${USER_PASSWORD}" | passwd -q $USERNAME
+echo -e "${ROOT_PASSWORD}\n${ROOT_PASSWORD}" | passwd -q
+systemctl preset-all --preset-mode=enable-only
+EOF
+}
+
+
+install_grub() {
+	eval_gettext "Installing GRUB..."; echo
+	cat <<EOF | chroot /mnt/gentoo
+grub-install --efi-directory=/boot/efi
+grub-mkconfig -o /boot/grub/grub.cfg
+EOF
+}
+
+
+setup_hostname() {
+	eval_gettext "Setting up hostname..."; echo
+	chroot /mnt/gentoo systemd-machine-id-setup
+}
+
+
+cleanup_stage() {
+	eval_gettext "Deleting stage archive..."; echo
+	rm /mnt/gentoo/$(basename $FILE)
+}
+
+
+# Main function for installation
+install_on_disk() {
+	mount_root_partition
+	mount_efi_partition
+	filesystem_creation
+	activate_swap
+	install_stage
+	fstab_creation
+	configure_keymap
+	prepare_for_chroot
+	create_user
+	setup_hostname
+	install_grub
+	cleanup_stage
 }
 
 
